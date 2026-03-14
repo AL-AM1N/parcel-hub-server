@@ -1,7 +1,7 @@
 const express = require("express");
 const cors = require("cors");
-const dotenv = require('dotenv');
-const { MongoClient, ServerApiVersion } = require('mongodb');
+const dotenv = require("dotenv");
+const { MongoClient, ServerApiVersion } = require("mongodb");
 
 //load environment variable from .env file
 dotenv.config();
@@ -13,11 +13,6 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-
-
-
-
-
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASSWORD}@cluster0.rmwu2kp.mongodb.net/?appName=Cluster0`;
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
@@ -26,7 +21,7 @@ const client = new MongoClient(uri, {
     version: ServerApiVersion.v1,
     strict: true,
     deprecationErrors: true,
-  }
+  },
 });
 
 async function run() {
@@ -35,14 +30,32 @@ async function run() {
     await client.connect();
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
-    console.log("Pinged your deployment. You successfully connected to MongoDB!");
+    console.log(
+      "Pinged your deployment. You successfully connected to MongoDB!",
+    );
   } finally {
     // Ensures that the client will close when you finish/error
     // await client.close();
+
+    const db = client.db("parcelDB");
+    const parcelsCollection = db.collection("parcels");
+
+    console.log("Connected to MongoDB ✅");
+
+    
+    app.get("/parcels", async (req, res) => {
+      const result = await parcelsCollection.find().toArray();
+      res.send(result);
+    });
+
+    app.post("/parcels", async (req, res) => {
+      const parcel = req.body;
+      const result = await parcelsCollection.insertOne(parcel);
+      res.send(result);
+    });
   }
 }
 run().catch(console.dir);
-
 
 app.get("/", (req, res) => {
   res.send("ParcelHub Server is Running 🚚");
