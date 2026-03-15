@@ -1,7 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 const dotenv = require("dotenv");
-const { MongoClient, ServerApiVersion } = require("mongodb");
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 
 //load environment variable from .env file
 dotenv.config();
@@ -42,33 +42,47 @@ async function run() {
 
     console.log("Connected to MongoDB ✅");
 
-    
     app.get("/parcels", async (req, res) => {
       const result = await parcelsCollection.find().toArray();
       res.send(result);
     });
 
     // parcels api
-    app.get('parcels', async(req, res) => {
-      try{
+    app.get("parcels", async (req, res) => {
+      try {
         const userEmail = req.query.email;
-      const query = userEmail ? {created_by: userEmail} : {};
-      const options = {
-        sort: { createdAt:-1 }, // newest first
-      };
+        const query = userEmail ? { created_by: userEmail } : {};
+        const options = {
+          sort: { createdAt: -1 }, // newest first
+        };
 
-      const parcels = await parcelsCollection.find(query, options).toArray();
-      res.send(parcels)
+        const parcels = await parcelsCollection.find(query, options).toArray();
+        res.send(parcels);
+      } catch (error) {
+        console.error("Error fatching parcels:", error);
       }
-      catch (error){
-        console.error('Error fatching parcels:', error);
-      }
-    })
+    });
 
     app.post("/parcels", async (req, res) => {
       const parcel = req.body;
       const result = await parcelsCollection.insertOne(parcel);
       res.send(result);
+    });
+
+    // DELETE parcel
+    app.delete("/parcels/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+
+        const query = { _id: new ObjectId(id) };
+
+        const result = await parcelsCollection.deleteOne(query);
+
+        res.send(result);
+      } catch (error) {
+        console.error("Error deleting parcel:", error);
+        res.status(500).send({ error: "Failed to delete parcel" });
+      }
     });
   }
 }
