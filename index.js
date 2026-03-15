@@ -48,6 +48,23 @@ async function run() {
       res.send(result);
     });
 
+    // parcels api
+    app.get('parcels', async(req, res) => {
+      try{
+        const userEmail = req.query.email;
+      const query = userEmail ? {created_by: userEmail} : {};
+      const options = {
+        sort: { createdAt:-1 }, // newest first
+      };
+
+      const parcels = await parcelsCollection.find(query, options).toArray();
+      res.send(parcels)
+      }
+      catch (error){
+        console.error('Error fatching parcels:', error);
+      }
+    })
+
     app.post("/parcels", async (req, res) => {
       const parcel = req.body;
       const result = await parcelsCollection.insertOne(parcel);
