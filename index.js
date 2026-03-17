@@ -63,6 +63,26 @@ async function run() {
       }
     });
 
+    // GET single parcel by id
+    app.get("/parcels/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+
+        const query = { _id: new ObjectId(id) };
+
+        const parcel = await parcelsCollection.findOne(query);
+
+        if (!parcel) {
+          return res.status(404).send({ message: "Parcel not found" });
+        }
+
+        res.send(parcel);
+      } catch (error) {
+        console.error("Error fetching parcel:", error);
+        res.status(500).send({ error: "Failed to fetch parcel" });
+      }
+    });
+
     app.post("/parcels", async (req, res) => {
       const parcel = req.body;
       const result = await parcelsCollection.insertOne(parcel);
