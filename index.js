@@ -6,6 +6,8 @@ const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 //load environment variable from .env file
 dotenv.config();
 
+const stripe = require("stripe")(process.env.PAYMENT_GATEWAY_KEY);
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -102,6 +104,24 @@ async function run() {
       } catch (error) {
         console.error("Error deleting parcel:", error);
         res.status(500).send({ error: "Failed to delete parcel" });
+      }
+    });
+
+    app.post("/create-payment-intent", async (req, res) => {
+      try {
+        const amountInCents = req.body.amountInCents;
+
+        const paymentIntent = await stripe.paymentIntents.create({
+          amount: amountInCents, // Stripe uses cents
+          currency: "usd",
+          payment_method_types: ["card"],
+        });
+
+        res.send({
+          clientSecret: paymentIntent.client_secret,
+        });
+      } catch (error) {
+        res.status(500).send({ error: error.message });
       }
     });
   }
