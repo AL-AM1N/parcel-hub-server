@@ -41,6 +41,7 @@ async function run() {
 
     const db = client.db("parcelDB");
     const parcelsCollection = db.collection("parcels");
+    const paymentsCollection = db.collection("payments");
 
     console.log("Connected to MongoDB ✅");
 
@@ -104,6 +105,79 @@ async function run() {
       } catch (error) {
         console.error("Error deleting parcel:", error);
         res.status(500).send({ error: "Failed to delete parcel" });
+      }
+    });
+
+    app.get("/payments", async (req, res) => {
+      try {
+        const userEmail = req.query.email;
+
+        const query = userEmail ? { email: userEmail } : {};
+
+        const options = {
+          sort: { paid_at: -1 }, //newest first
+        };
+
+        const payments = await paymentsCollection
+          .find(query, options)
+          .toArray();
+
+        res.send(payments);
+      } catch (error) {
+        console.error("Error fetching payments:", error);
+        res.status(500).send({ error: "Failed to fetch payments" });
+      }
+    });
+
+    // save payment & update parcel
+    app.post("/payments", async (req, res) => {
+      try {
+        const { parcelId, email, amount, paymentMethod, transactionId } =
+          req.body;
+
+        // 2️⃣ update parcel payment status
+        const query = { _id: new ObjectId(parcelId) };
+
+        const updateDoc = {
+          $set: {
+            payment_status: "paid",
+            transactionId: transactionId,
+          },
+        };
+
+        const updateResult = await parcelsCollection.updateOne(
+          query,
+          updateDoc,
+        );
+
+        if (updateResult.modifiedCount === 0) {
+          return res
+            .status(404)
+            .send({ message: "parcel not found or already paid" });
+        }
+
+        // 2. insert payment record
+        const paymentDoc = {
+          parcelId,
+          email,
+          amount,
+          paymentMethod,
+          transactionId,
+          paid_at_string: new Date().toISOString(),
+          paid_at: new Date(),
+        };
+
+        // save payment history
+        const paymentResult = await paymentsCollection.insertOne(paymentDoc);
+
+        res.send({
+          success: true,
+          paymentResult,
+          updateResult,
+        });
+      } catch (error) {
+        console.error("Payment save error:", error);
+        res.status(500).send({ error: "Failed to save payment" });
       }
     });
 
