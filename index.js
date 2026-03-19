@@ -16,14 +16,11 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-
-
 const serviceAccount = require("./firebase-admin-key.json");
 
 admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount)
+  credential: admin.credential.cert(serviceAccount),
 });
-
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASSWORD}@cluster0.rmwu2kp.mongodb.net/?appName=Cluster0`;
 
@@ -53,46 +50,45 @@ async function run() {
     const usersCollection = db.collection("users");
     const parcelsCollection = db.collection("parcels");
     const paymentsCollection = db.collection("payments");
+    const ridersCollection = db.collection("riders");
 
     console.log("Connected to MongoDB ✅");
 
     // custom middlewares
     const varifyFBToken = async (req, res, next) => {
+      //console.log("hearders in middleware", req.headers);
+      const authHeader = req.headers.authorization;
 
-     //console.log("hearders in middleware", req.headers); 
-     const authHeader = req.headers.authorization;
+      if (!authHeader) {
+        return res.status(401).send({ message: "unauthorized access" });
+      }
+      const token = authHeader.split(" ")[1];
+      if (!token) {
+        return res.status(401).send({ message: "unauthorized access" });
+      }
 
-     if(!authHeader){
-      return res.status(401).send({ message: 'unauthorized access'})
-     }
-     const token  = authHeader.split(' ')[1];
-     if(!token){
-      return res.status(401).send({message: 'unauthorized access'})
-     }
+      //verify the token
+      try {
+        const decoded = await admin.auth().verifyIdToken(token);
+        req.decoded = decoded;
+        next();
+      } catch {
+        return res.status(401).send({ message: "forbidden access" });
+      }
+    };
 
-     //verify the token
-     try{
-      const decoded = await admin.auth().verifyIdToken(token);
-      req.decoded = decoded;
-      next();
-     }
-     catch{
-      return res.status(401).send({ message: 'forbidden access'})
-     }
-
-     
-    }
-
-    app.post('/users', async(req, res) =>{
+    app.post("/users", async (req, res) => {
       const email = req.body.email;
-      const userExits = await usersCollection.findOne({email})
-      if(userExits){
-        return res.status(200).send({message: 'User already exists', inserted: false})
+      const userExits = await usersCollection.findOne({ email });
+      if (userExits) {
+        return res
+          .status(200)
+          .send({ message: "User already exists", inserted: false });
       }
       const user = req.body;
       const result = await usersCollection.insertOne(user);
       res.send(result);
-    })
+    });
 
     // app.get("/parcels", async (req, res) => {
     //   const result = await parcelsCollection.find().toArray();
@@ -157,6 +153,29 @@ async function run() {
       }
     });
 
+    app.post("/riders", async (req, res) => {
+      const rider = req.body;
+      const result = await ridersCollection.insertOne(rider);
+      res.send(result);
+    });
+
+    app.get("/riders/pending", async (req, res) => {
+      try {
+        const query = { status: "pending" };
+
+        const options = {
+          sort: { created_at: -1 }, // newest first
+        };
+
+        const pendingRiders = await ridersCollection.find(query, options).toArray();
+
+        res.send(pendingRiders);
+      } catch (error) {
+        console.error("Error fetching pending riders:", error);
+        res.status(500).send({ error: "Failed to fetch pending riders" });
+      }
+    });
+
     // app.post("/tracking", async (req, res) =>{
     //   const {tracking_id, parcel_id, status, message, updated_by=''} = req.body;
 
@@ -177,11 +196,10 @@ async function run() {
       try {
         const userEmail = req.query.email;
 
-        console.log('decoded', req.decoded)
-        if(req.decoded.email !== userEmail) {
-          return res.status(401).send({ message: 'forbidden access'})
+        console.log("decoded", req.decoded);
+        if (req.decoded.email !== userEmail) {
+          return res.status(401).send({ message: "forbidden access" });
         }
-
 
         const query = userEmail ? { email: userEmail } : {};
 
