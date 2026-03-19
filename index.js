@@ -40,10 +40,22 @@ async function run() {
     // await client.close();
 
     const db = client.db("parcelDB");
+    const usersCollection = db.collection("users");
     const parcelsCollection = db.collection("parcels");
     const paymentsCollection = db.collection("payments");
 
     console.log("Connected to MongoDB ✅");
+
+    app.post('/users', async(req, res) =>{
+      const email = req.body.email;
+      const userExits = await usersCollection.findOne({email})
+      if(userExits){
+        return res.status(200).send({message: 'User already exists', inserted: false})
+      }
+      const user = req.body;
+      const result = await usersCollection.insertOne(user);
+      res.send(result);
+    })
 
     app.get("/parcels", async (req, res) => {
       const result = await parcelsCollection.find().toArray();
@@ -107,6 +119,22 @@ async function run() {
         res.status(500).send({ error: "Failed to delete parcel" });
       }
     });
+
+    // app.post("/tracking", async (req, res) =>{
+    //   const {tracking_id, parcel_id, status, message, updated_by=''} = req.body;
+
+    //   const log = {
+    //     tracking_id,
+    //     parcel_id: parcel_id? new ObjectId(parcel_id) : undefined,
+    //     status,
+    //     message,
+    //     time: new Date(),
+    //     updated_by,
+    //   };
+
+    //   const result = await trackingCollection.insertOne(log);
+    //   res.send({success: true, insertedId: result.insertedId});
+    // });
 
     app.get("/payments", async (req, res) => {
       try {
