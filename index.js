@@ -167,12 +167,54 @@ async function run() {
           sort: { created_at: -1 }, // newest first
         };
 
-        const pendingRiders = await ridersCollection.find(query, options).toArray();
+        const pendingRiders = await ridersCollection
+          .find(query, options)
+          .toArray();
 
         res.send(pendingRiders);
       } catch (error) {
         console.error("Error fetching pending riders:", error);
         res.status(500).send({ error: "Failed to fetch pending riders" });
+      }
+    });
+
+    app.get("/riders/active", async (req, res) => {
+      const result = await ridersCollection
+        .find({ status: "active" })
+        .toArray();
+
+      res.send(result);
+    });
+
+    app.patch("/riders/:id/status", async (req, res) => {
+      try {
+        const id = req.params.id;
+        const { status } = req.body;
+
+        // validation
+        if (!["active", "rejected"].includes(status)) {
+          return res.status(400).send({ error: "Invalid status value" });
+        }
+
+        const query = { _id: new ObjectId(id) };
+
+        // update rider status
+        const updateDoc = {
+          $set: {
+            status: status,
+          },
+        };
+
+        const result = await ridersCollection.updateOne(query, updateDoc);
+
+        res.send({
+          success: true,
+          message: `Rider ${status} successfully`,
+          result,
+        });
+      } catch (error) {
+        console.error("Error updating rider status:", error);
+        res.status(500).send({ error: "Failed to update rider status" });
       }
     });
 
