@@ -7,6 +7,7 @@ const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 dotenv.config();
 
 const stripe = require("stripe")(process.env.PAYMENT_GATEWAY_KEY);
+const admin = require("firebase-admin");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -14,6 +15,15 @@ const PORT = process.env.PORT || 3000;
 // middleware
 app.use(cors());
 app.use(express.json());
+
+
+
+const serviceAccount = require("./firebase-admin-key.json");
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount)
+});
+
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASSWORD}@cluster0.rmwu2kp.mongodb.net/?appName=Cluster0`;
 
@@ -46,6 +56,33 @@ async function run() {
 
     console.log("Connected to MongoDB ✅");
 
+    // custom middlewares
+    const varifyFBToken = async (req, res, next) => {
+
+     //console.log("hearders in middleware", req.headers); 
+     const authHeader = req.headers.authorization;
+
+     if(!authHeader){
+      return res.status(401).send({ message: 'unauthorized access'})
+     }
+     const token  = authHeader.split(' ')[1];
+     if(!token){
+      return res.status(401).send({message: 'unauthorized access'})
+     }
+
+     //verify the token
+     try{
+      const decoded = await admin.auth().verifyIdToken(token);
+      req.decoded = decoded;
+      next();
+     }
+     catch{
+      return res.status(401).send({ message: 'forbidden access'})
+     }
+
+     
+    }
+
     app.post('/users', async(req, res) =>{
       const email = req.body.email;
       const userExits = await usersCollection.findOne({email})
@@ -57,13 +94,13 @@ async function run() {
       res.send(result);
     })
 
-    app.get("/parcels", async (req, res) => {
-      const result = await parcelsCollection.find().toArray();
-      res.send(result);
-    });
+    // app.get("/parcels", async (req, res) => {
+    //   const result = await parcelsCollection.find().toArray();
+    //   res.send(result);
+    // });
 
     // parcels api
-    app.get("parcels", async (req, res) => {
+    app.get("parcels", varifyFBToken, async (req, res) => {
       try {
         const userEmail = req.query.email;
         const query = userEmail ? { created_by: userEmail } : {};
@@ -136,9 +173,15 @@ async function run() {
     //   res.send({success: true, insertedId: result.insertedId});
     // });
 
-    app.get("/payments", async (req, res) => {
+    app.get("/payments", varifyFBToken, async (req, res) => {
       try {
         const userEmail = req.query.email;
+
+        console.log('decoded', req.decoded)
+        if(req.decoded.email !== userEmail) {
+          return res.status(401).send({ message: 'forbidden access'})
+        }
+
 
         const query = userEmail ? { email: userEmail } : {};
 
@@ -163,7 +206,7 @@ async function run() {
         const { parcelId, email, amount, paymentMethod, transactionId } =
           req.body;
 
-        // 2️⃣ update parcel payment status
+        // update parcel payment status
         const query = { _id: new ObjectId(parcelId) };
 
         const updateDoc = {
