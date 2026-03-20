@@ -77,6 +77,57 @@ async function run() {
       }
     };
 
+    app.get("/users/search", async (req, res) => {
+      const emailQuery = req.query.email;
+
+      if (!emailQuery) {
+        return res.status(400).send({ error: "Search query is required" });
+      }
+
+      const regex = new RegExp(emailQuery, "i"); // case-insensitive partical match
+
+      try {
+        const users = await usersCollection
+          .find({ email: { $regex: regex } })
+          .limit(10) //important (avoid loading too much)
+          .toArray();
+
+        res.send(users);
+      } catch (error) {
+        console.error("Error searching users:", error);
+        res.status(500).send({ error: "Failed to search users" });
+      }
+    });
+
+    app.patch("/users/:id/role", async (req, res) => {
+      
+        const {id} = req.params;
+        const { role } = req.body;
+
+        // allowed roles
+        if (!["admin", "user"].includes(role)) {
+          return res.status(400).send({ error: "Invalid role" });
+        }
+
+        try {
+
+        const result = await usersCollection.updateOne(
+          { _id: new ObjectId(id) },
+          {
+            $set: { role },
+          },
+        );
+
+        res.send({
+          message: `User role updated to ${role}`,
+          result,
+        });
+      } catch (error) {
+        console.error("Error updating role:", error);
+        res.status(500).send({ error: "Failed to update role" });
+      }
+    });
+
     app.post("/users", async (req, res) => {
       const email = req.body.email;
       const userExits = await usersCollection.findOne({ email });
@@ -187,31 +238,37 @@ async function run() {
     });
 
     app.patch("/riders/:id/status", async (req, res) => {
+      const { id } = req.params;
+      const { status, email } = req.body;
+
+      const query = { _id: new ObjectId(id) };
+
+      // update rider status
+      const updateDoc = {
+        $set: {
+          status: status,
+        },
+      };
+
       try {
-        const id = req.params.id;
-        const { status } = req.body;
-
-        // validation
-        if (!["active", "rejected"].includes(status)) {
-          return res.status(400).send({ error: "Invalid status value" });
-        }
-
-        const query = { _id: new ObjectId(id) };
-
-        // update rider status
-        const updateDoc = {
-          $set: {
-            status: status,
-          },
-        };
-
         const result = await ridersCollection.updateOne(query, updateDoc);
 
-        res.send({
-          success: true,
-          message: `Rider ${status} successfully`,
-          result,
-        });
+        // update user role for accepting rider
+        if (status === "active") {
+          const userQuery = { email };
+          const userUpdateDoc = {
+            $set: {
+              role: "rider",
+            },
+          };
+          const roleResult = await usersCollection.updateOne(
+            userQuery,
+            userUpdateDoc,
+          );
+          console.log(roleResult.matchedCount);
+        }
+
+        res.send(result);
       } catch (error) {
         console.error("Error updating rider status:", error);
         res.status(500).send({ error: "Failed to update rider status" });
