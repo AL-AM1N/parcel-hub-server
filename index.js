@@ -100,17 +100,15 @@ async function run() {
     });
 
     app.patch("/users/:id/role", async (req, res) => {
-      
-        const {id} = req.params;
-        const { role } = req.body;
+      const { id } = req.params;
+      const { role } = req.body;
 
-        // allowed roles
-        if (!["admin", "user"].includes(role)) {
-          return res.status(400).send({ error: "Invalid role" });
-        }
+      // allowed roles
+      if (!["admin", "user"].includes(role)) {
+        return res.status(400).send({ error: "Invalid role" });
+      }
 
-        try {
-
+      try {
         const result = await usersCollection.updateOne(
           { _id: new ObjectId(id) },
           {
@@ -125,6 +123,26 @@ async function run() {
       } catch (error) {
         console.error("Error updating role:", error);
         res.status(500).send({ error: "Failed to update role" });
+      }
+    });
+
+    // GET: Get user role by email
+    app.get("/users/:email/role", async (req, res) => {
+      try {
+        const email = req.params.email;
+
+        const user = await usersCollection.findOne({ email });
+
+        if (!user) {
+          return res.status(404).send({ error: "User not found" });
+        }
+
+        res.send({
+          role: user.role || "user",
+        });
+      } catch (error) {
+        console.error("Error getting role:", error);
+        res.status(500).send({ error: "Failed to get role" });
       }
     });
 
