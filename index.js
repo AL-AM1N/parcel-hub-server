@@ -54,6 +54,8 @@ async function run() {
 
     console.log("Connected to MongoDB ✅");
 
+
+
     // custom middlewares
     const varifyFBToken = async (req, res, next) => {
       //console.log("hearders in middleware", req.headers);
@@ -77,6 +79,19 @@ async function run() {
       }
     };
 
+    const verifyAdmin = async(req, res, next) => {
+            const email = req.decoded.email;
+            const query = { email }
+            const user = await usersCollection.findOne(query);
+
+            if(!user || user.role !== 'admin'){
+              return res.status(403).send({ message: "forbidden access" });
+            }
+            next()
+    }
+
+    
+
     app.get("/users/search", async (req, res) => {
       const emailQuery = req.query.email;
 
@@ -99,7 +114,7 @@ async function run() {
       }
     });
 
-    app.patch("/users/:id/role", async (req, res) => {
+    app.patch("/users/:id/role", varifyFBToken, verifyAdmin, async (req, res) => {
       const { id } = req.params;
       const { role } = req.body;
 
@@ -127,7 +142,7 @@ async function run() {
     });
 
     // GET: Get user role by email
-    app.get("/users/:email/role", async (req, res) => {
+    app.get("/users/:email/role",  async (req, res) => {
       try {
         const email = req.params.email;
 
@@ -228,7 +243,7 @@ async function run() {
       res.send(result);
     });
 
-    app.get("/riders/pending", async (req, res) => {
+    app.get("/riders/pending", varifyFBToken, verifyAdmin, async (req, res) => {
       try {
         const query = { status: "pending" };
 
@@ -247,7 +262,7 @@ async function run() {
       }
     });
 
-    app.get("/riders/active", async (req, res) => {
+    app.get("/riders/active", varifyFBToken, verifyAdmin, async (req, res) => {
       const result = await ridersCollection
         .find({ status: "active" })
         .toArray();
