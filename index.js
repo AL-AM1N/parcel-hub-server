@@ -54,8 +54,6 @@ async function run() {
 
     console.log("Connected to MongoDB ✅");
 
-
-
     // custom middlewares
     const varifyFBToken = async (req, res, next) => {
       //console.log("hearders in middleware", req.headers);
@@ -79,18 +77,16 @@ async function run() {
       }
     };
 
-    const verifyAdmin = async(req, res, next) => {
-            const email = req.decoded.email;
-            const query = { email }
-            const user = await usersCollection.findOne(query);
+    const verifyAdmin = async (req, res, next) => {
+      const email = req.decoded.email;
+      const query = { email };
+      const user = await usersCollection.findOne(query);
 
-            if(!user || user.role !== 'admin'){
-              return res.status(403).send({ message: "forbidden access" });
-            }
-            next()
-    }
-
-    
+      if (!user || user.role !== "admin") {
+        return res.status(403).send({ message: "forbidden access" });
+      }
+      next();
+    };
 
     app.get("/users/search", async (req, res) => {
       const emailQuery = req.query.email;
@@ -114,35 +110,40 @@ async function run() {
       }
     });
 
-    app.patch("/users/:id/role", varifyFBToken, verifyAdmin, async (req, res) => {
-      const { id } = req.params;
-      const { role } = req.body;
+    app.patch(
+      "/users/:id/role",
+      varifyFBToken,
+      verifyAdmin,
+      async (req, res) => {
+        const { id } = req.params;
+        const { role } = req.body;
 
-      // allowed roles
-      if (!["admin", "user"].includes(role)) {
-        return res.status(400).send({ error: "Invalid role" });
-      }
+        // allowed roles
+        if (!["admin", "user"].includes(role)) {
+          return res.status(400).send({ error: "Invalid role" });
+        }
 
-      try {
-        const result = await usersCollection.updateOne(
-          { _id: new ObjectId(id) },
-          {
-            $set: { role },
-          },
-        );
+        try {
+          const result = await usersCollection.updateOne(
+            { _id: new ObjectId(id) },
+            {
+              $set: { role },
+            },
+          );
 
-        res.send({
-          message: `User role updated to ${role}`,
-          result,
-        });
-      } catch (error) {
-        console.error("Error updating role:", error);
-        res.status(500).send({ error: "Failed to update role" });
-      }
-    });
+          res.send({
+            message: `User role updated to ${role}`,
+            result,
+          });
+        } catch (error) {
+          console.error("Error updating role:", error);
+          res.status(500).send({ error: "Failed to update role" });
+        }
+      },
+    );
 
     // GET: Get user role by email
-    app.get("/users/:email/role",  async (req, res) => {
+    app.get("/users/:email/role", async (req, res) => {
       try {
         const email = req.params.email;
 
@@ -180,10 +181,23 @@ async function run() {
     // });
 
     // parcels api
-    app.get("parcels", varifyFBToken, async (req, res) => {
+    app.get("/parcels", varifyFBToken, async (req, res) => {
       try {
-        const userEmail = req.query.email;
-        const query = userEmail ? { created_by: userEmail } : {};
+        const { email, payment_status, delivery_status } = req.query;
+
+        let query = {};
+        if (email) {
+          query = { created_by: email };
+        }
+
+        if (payment_status) {
+          query.payment_status = payment_status;
+        }
+        if (delivery_status) {
+          query.delivery_status = delivery_status;
+        }
+
+        // const query = userEmail ? { created_by: userEmail } : {};
         const options = {
           sort: { createdAt: -1 }, // newest first
         };
@@ -219,6 +233,46 @@ async function run() {
       const parcel = req.body;
       const result = await parcelsCollection.insertOne(parcel);
       res.send(result);
+    });
+
+    app.patch("/parcels/:id/assign", async (req, res) => {
+      try {
+        const id = req.params.id;
+        const { rider_id, rider_name, rider_email } = req.body;
+
+        const parcelFilter = { _id: new ObjectId(id) };
+
+        // Update Parcel
+        const parcelUpdate = await parcelsCollection.updateOne(parcelFilter, {
+          $set: {
+            rider_id, 
+            rider_name, 
+            rider_email, 
+            delivery_status: "in-transit",
+            assigned_at: new Date(),
+          },
+        });
+
+        // Update Rider Status
+        const riderUpdate = await ridersCollection.updateOne(
+          { _id: new ObjectId(rider_id) }, 
+          {
+            $set: {
+              work_status: "in-delivery",
+            },
+          },
+        );
+
+        res.send({
+          success: true,
+          message: "Rider assigned successfully",
+          parcelUpdate,
+          riderUpdate,
+        });
+      } catch (error) {
+        console.error("Assign rider error:", error);
+        res.status(500).send({ message: "Failed to assign rider" });
+      }
     });
 
     // DELETE parcel
@@ -268,6 +322,20 @@ async function run() {
         .toArray();
 
       res.send(result);
+    });
+
+    // GET eligible riders
+    app.get("/riders/available", async (req, res) => {
+      try {
+        const { district } = req.query;
+
+        const riders = await ridersCollection.find({ district }).toArray();
+
+        res.send(riders);
+      } catch (error) {
+        console.error("Error fetching eligible riders:", error);
+        res.status(500).send({ message: "Failed to fetch riders" });
+      }
     });
 
     app.patch("/riders/:id/status", async (req, res) => {
