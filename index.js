@@ -229,6 +229,32 @@ async function run() {
       }
     });
 
+    app.get("/rider/parcels", async (req, res) => {
+      try {
+        const email = req.query.email;
+
+        if (!email) {
+          return res.status(400).send({ error: "Rider email is required" });
+        }
+
+        const query = {
+          assigned_rider_email: email,
+          delivery_status: { $in: ["rider_assigned", "in_transit"] },
+        };
+
+        const options = {
+          sort: { assigned_at: -1 }, // latest assigned first
+        };
+
+        const parcels = await parcelsCollection.find(query, options).toArray();
+
+        res.send(parcels);
+      } catch (error) {
+        console.error("Error fetching rider parcels:", error);
+        res.status(500).send({ error: "Failed to fetch rider parcels" });
+      }
+    });
+
     app.post("/parcels", async (req, res) => {
       const parcel = req.body;
       const result = await parcelsCollection.insertOne(parcel);
@@ -237,25 +263,25 @@ async function run() {
 
     app.patch("/parcels/:id/assign", async (req, res) => {
       try {
-        const id = req.params.id;
-        const { rider_id, rider_name, rider_email } = req.body;
+        const { id } = req.params;
+        const { riderId, riderName, riderEmail } = req.body;
 
         const parcelFilter = { _id: new ObjectId(id) };
 
         // Update Parcel
         const parcelUpdate = await parcelsCollection.updateOne(parcelFilter, {
           $set: {
-            rider_id, 
-            rider_name, 
-            rider_email, 
-            delivery_status: "in-transit",
+            assigned_rider_id: riderId,
+            assigned_rider_name: riderName,
+            assigned_rider_email: riderEmail,
+            delivery_status: "rider_assigned",
             assigned_at: new Date(),
           },
         });
 
         // Update Rider Status
         const riderUpdate = await ridersCollection.updateOne(
-          { _id: new ObjectId(rider_id) }, 
+          { _id: new ObjectId(riderId) },
           {
             $set: {
               work_status: "in-delivery",
@@ -273,6 +299,22 @@ async function run() {
         console.error("Assign rider error:", error);
         res.status(500).send({ message: "Failed to assign rider" });
       }
+    });
+
+    app.patch("/parcels/:id/status", async (req, res) => {
+      const parcelId = req.params.id;
+      const { status } = req.body;
+
+      const result = await parcelsCollection.updateOne(
+        { _id: new ObjectId(parcelId) },
+        {
+          $set: {
+            delivery_status: status,
+          },
+        },
+      );
+
+      res.send(result);
     });
 
     // DELETE parcel
