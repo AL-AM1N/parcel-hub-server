@@ -55,7 +55,7 @@ async function run() {
     console.log("Connected to MongoDB ✅");
 
     // custom middlewares
-    const varifyFBToken = async (req, res, next) => {
+    const verifyFBToken = async (req, res, next) => {
       //console.log("hearders in middleware", req.headers);
       const authHeader = req.headers.authorization;
 
@@ -88,6 +88,18 @@ async function run() {
       next();
     };
 
+
+    const verifyRider = async (req, res, next) => {
+      const email = req.decoded.email;
+      const query = { email };
+      const user = await usersCollection.findOne(query);
+
+      if (!user || user.role !== "rider") {
+        return res.status(403).send({ message: "forbidden access" });
+      }
+      next();
+    };
+
     app.get("/users/search", async (req, res) => {
       const emailQuery = req.query.email;
 
@@ -112,7 +124,7 @@ async function run() {
 
     app.patch(
       "/users/:id/role",
-      varifyFBToken,
+      verifyFBToken,
       verifyAdmin,
       async (req, res) => {
         const { id } = req.params;
@@ -181,7 +193,7 @@ async function run() {
     // });
 
     // parcels api
-    app.get("/parcels", varifyFBToken, async (req, res) => {
+    app.get("/parcels", verifyFBToken, async (req, res) => {
       try {
         const { email, payment_status, delivery_status } = req.query;
 
@@ -229,7 +241,7 @@ async function run() {
       }
     });
 
-    app.get("/rider/parcels", async (req, res) => {
+    app.get("/rider/parcels", verifyFBToken, verifyRider, async (req, res) => {
       try {
         const email = req.query.email;
 
@@ -255,6 +267,35 @@ async function run() {
       }
     });
 
+    app.get("/rider/completed-parcels", verifyFBToken, verifyRider, async (req, res) => {
+      try {
+        const email = req.query.email;
+
+        if (!email) {
+          return res.status(400).send({ error: "Rider email is required" });
+        }
+
+        const query = {
+          assigned_rider_email: email,
+          delivery_status: {
+            $in: ["delivered", "service_center_delivered"],
+          },
+        };
+
+        const options = {
+          sort: { delivered_at: -1 }, // latest completed first
+        };
+
+        const parcels = await parcelsCollection.find(query, options).toArray();
+
+        res.send(parcels);
+      } catch (error) {
+        console.error("Error fetching completed deliveries:", error);
+        res.status(500).send({ error: "Failed to fetch completed deliveries" });
+      }
+    });
+
+    // create a new parcel
     app.post("/parcels", async (req, res) => {
       const parcel = req.body;
       const result = await parcelsCollection.insertOne(parcel);
@@ -339,7 +380,7 @@ async function run() {
       res.send(result);
     });
 
-    app.get("/riders/pending", varifyFBToken, verifyAdmin, async (req, res) => {
+    app.get("/riders/pending", verifyFBToken, verifyAdmin, async (req, res) => {
       try {
         const query = { status: "pending" };
 
@@ -358,7 +399,7 @@ async function run() {
       }
     });
 
-    app.get("/riders/active", varifyFBToken, verifyAdmin, async (req, res) => {
+    app.get("/riders/active", verifyFBToken, verifyAdmin, async (req, res) => {
       const result = await ridersCollection
         .find({ status: "active" })
         .toArray();
@@ -434,7 +475,7 @@ async function run() {
     //   res.send({success: true, insertedId: result.insertedId});
     // });
 
-    app.get("/payments", varifyFBToken, async (req, res) => {
+    app.get("/payments", verifyFBToken, async (req, res) => {
       try {
         const userEmail = req.query.email;
 
