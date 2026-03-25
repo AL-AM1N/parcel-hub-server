@@ -345,13 +345,21 @@ async function run() {
     app.patch("/parcels/:id/status", async (req, res) => {
       const parcelId = req.params.id;
       const { status } = req.body;
+      const updatedDoc = {
+            delivery_status: status,
+          }
+
+          if(status === 'in_transit'){
+            updatedDoc.picked_at = new Date().toISOString()
+          }
+          else if(status === 'delivered'){
+            updatedDoc.delivered_at= new Date().toISOString()
+          }
 
       const result = await parcelsCollection.updateOne(
         { _id: new ObjectId(parcelId) },
         {
-          $set: {
-            delivery_status: status,
-          },
+          $set: updatedDoc 
         },
       );
 
