@@ -49,6 +49,7 @@ async function run() {
     const db = client.db("parcelDB");
     const usersCollection = db.collection("users");
     const parcelsCollection = db.collection("parcels");
+    const trackingsCollection = db.collection("tracking")
     const paymentsCollection = db.collection("payments");
     const ridersCollection = db.collection("riders");
 
@@ -87,7 +88,6 @@ async function run() {
       }
       next();
     };
-
 
     const verifyRider = async (req, res, next) => {
       const email = req.decoded.email;
@@ -267,33 +267,42 @@ async function run() {
       }
     });
 
-    app.get("/rider/completed-parcels", verifyFBToken, verifyRider, async (req, res) => {
-      try {
-        const email = req.query.email;
+    app.get(
+      "/rider/completed-parcels",
+      verifyFBToken,
+      verifyRider,
+      async (req, res) => {
+        try {
+          const email = req.query.email;
 
-        if (!email) {
-          return res.status(400).send({ error: "Rider email is required" });
+          if (!email) {
+            return res.status(400).send({ error: "Rider email is required" });
+          }
+
+          const query = {
+            assigned_rider_email: email,
+            delivery_status: {
+              $in: ["delivered", "service_center_delivered"],
+            },
+          };
+
+          const options = {
+            sort: { delivered_at: -1 }, // latest completed first
+          };
+
+          const parcels = await parcelsCollection
+            .find(query, options)
+            .toArray();
+
+          res.send(parcels);
+        } catch (error) {
+          console.error("Error fetching completed deliveries:", error);
+          res
+            .status(500)
+            .send({ error: "Failed to fetch completed deliveries" });
         }
-
-        const query = {
-          assigned_rider_email: email,
-          delivery_status: {
-            $in: ["delivered", "service_center_delivered"],
-          },
-        };
-
-        const options = {
-          sort: { delivered_at: -1 }, // latest completed first
-        };
-
-        const parcels = await parcelsCollection.find(query, options).toArray();
-
-        res.send(parcels);
-      } catch (error) {
-        console.error("Error fetching completed deliveries:", error);
-        res.status(500).send({ error: "Failed to fetch completed deliveries" });
-      }
-    });
+      },
+    );
 
     // create a new parcel
     app.post("/parcels", async (req, res) => {
@@ -346,20 +355,19 @@ async function run() {
       const parcelId = req.params.id;
       const { status } = req.body;
       const updatedDoc = {
-            delivery_status: status,
-          }
+        delivery_status: status,
+      };
 
-          if(status === 'in_transit'){
-            updatedDoc.picked_at = new Date().toISOString()
-          }
-          else if(status === 'delivered'){
-            updatedDoc.delivered_at= new Date().toISOString()
-          }
+      if (status === "in_transit") {
+        updatedDoc.picked_at = new Date().toISOString();
+      } else if (status === "delivered") {
+        updatedDoc.delivered_at = new Date().toISOString();
+      }
 
       const result = await parcelsCollection.updateOne(
         { _id: new ObjectId(parcelId) },
         {
-          $set: updatedDoc 
+          $set: updatedDoc,
         },
       );
 
@@ -370,16 +378,17 @@ async function run() {
       const id = req.params.id;
       const result = await parcelsCollection.updateOne(
         {
-          _id: new ObjectId(id)
+          _id: new ObjectId(id),
         },
         {
           $set: {
-            cashout_status: "cashed_out", cashed_out_at: new Date() 
-          }
-        }
-      ); 
+            cashout_status: "cashed_out",
+            cashed_out_at: new Date(),
+          },
+        },
+      );
       res.send(result);
-    })
+    });
 
     // DELETE parcel
     app.delete("/parcels/:id", async (req, res) => {
@@ -396,6 +405,29 @@ async function run() {
         res.status(500).send({ error: "Failed to delete parcel" });
       }
     });
+
+    app.get("/trackings/:trackingId", async (req, res) => {
+        const trackingId = req.params.trackingId;
+
+        const updates = await trackingsCollection
+          .find({ tracking_id: trackingId })
+          .sort({ timestamp: 1 }) // oldest → newest
+          .toArray();
+
+        res.send(updates);
+    });
+
+    app.post("/trackings", async (req, res) => {
+      const update = req.body;
+
+      update.timestamp = new Date();
+      if(!update.tracking_id || !update.status){
+        return res.status(400).json({message: "tracking_id and status are required"});
+      }
+
+      const result = await trackingsCollection.insertOne(update);
+      res.status(201).json(result);
+    })
 
     app.post("/riders", async (req, res) => {
       const rider = req.body;
@@ -494,7 +526,7 @@ async function run() {
     //     updated_by,
     //   };
 
-    //   const result = await trackingCollection.insertOne(log);
+    //   const result = await trackingsCollection.insertOne(log);
     //   res.send({success: true, insertedId: result.insertedId});
     // });
 
