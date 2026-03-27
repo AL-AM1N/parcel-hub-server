@@ -221,6 +221,16 @@ async function run() {
       }
     });
 
+    app.get("/parcels/track/:trackingId", async (req, res) => {
+      const trackingId = req.params.trackingId;
+
+      const parcel = await parcelsCollection.findOne({
+        tracking_id: trackingId,
+      });
+
+      res.send(parcel);
+    });
+
     // GET single parcel by id
     app.get("/parcels/:id", async (req, res) => {
       try {
@@ -242,29 +252,26 @@ async function run() {
     });
 
     app.get("/parcels/delivery/status-count", async (req, res) => {
-
       const pipeline = [
         {
-          $group:{
-            _id: '$delivery_status',
+          $group: {
+            _id: "$delivery_status",
             count: {
-              $sum: 1
-            }
-          }
+              $sum: 1,
+            },
+          },
         },
         {
           $project: {
-            status: '$_id',
+            status: "$_id",
             count: 1,
-            _id: 0
-          }
-        }
+            _id: 0,
+          },
+        },
       ];
 
       try {
-        const result = await parcelsCollection
-          .aggregate(pipeline)
-          .toArray();
+        const result = await parcelsCollection.aggregate(pipeline).toArray();
 
         res.send(result);
       } catch (error) {
